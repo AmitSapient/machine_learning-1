@@ -12,10 +12,10 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 from matplotlib import style
-import pickle
 import GetStockMarketData as stockdata
+from sklearn.metrics import confusion_matrix
 
-class NYSE_Kaggele_Ex:
+class Nifty_Classifier_Ex:
     def __init__(self):
 #        self.result_df = [] 
         self.result_df = pd.DataFrame()
@@ -32,8 +32,10 @@ class NYSE_Kaggele_Ex:
 
     def MACD(self, df):
         
-        df['26ema'] = pd.ewma(df["close"], span=26)
-        df['12ema'] = pd.ewma(df["close"], span=12)
+#        df['26ema'] = pd.ewma(df["close"], span=26)
+        df['26ema'] = df['close'].ewm(span=26).mean()
+#        df['12ema'] = pd.ewma(df["close"], span=12)
+        df['12ema'] = df['close'].ewm(span=12).mean()
         
         df['MACD'] = df['12ema'] - df['26ema']
         
@@ -42,11 +44,15 @@ class NYSE_Kaggele_Ex:
         return df  
     
     def execute(self):
-        print("\n\n\n\n\n***********  New Run of NYSE_Kaggele_Ex **********************\n\n")
+        print("\n\n\n\n\n***********  New Run of Nifty_Classifier_Ex **********************\n\n")
         pd.set_option('display.expand_frame_repr', False)
         
 #        df = pd.read_csv("D:\\workspace_pyCharm\\Machine Learning\\datasets\\NYSE\\GOOG.csv")
         df = stockdata.getData('NIFTY_50')
+        
+        #fil NaN data with average
+        df = df.fillna(df.mean())
+        print (df)
         
         #Just take some X years of data if not all years
         #df = df[1259:]
@@ -56,7 +62,11 @@ class NYSE_Kaggele_Ex:
         df = df[:-n]
         
         # Add another column next_day_close exct duplicate of close. Later we shift to make prev close.
-        df['next_day_close'] = df['close']
+        df['next_day_close'] = df['close'].shift(-1)
+        df = df[:-1]
+        df['diff'] = df['next_day_close'] - df['close']    
+        df['output'] = df['diff'].apply(lambda x: 0 if x <0 else 1)
+
         # Add few Moving avgs to dataframe
         #df = self.moving_average(df)
         df = self.MACD(df)
@@ -64,41 +74,20 @@ class NYSE_Kaggele_Ex:
         df = df.dropna(axis=0, how='any')       
         
         print ("Last 5 records - ", df.tail(5))
-        
-        # First shift 'close' by -1 because today's close depends on all the feature values of yesterday. To predict today's close
-        # we need the open, high, lo, volumne of yesterday because we dont have these values yet for today ! 
-        
-        df.next_day_close = df.next_day_close.shift(-1)
-        df = df[:-1]
-        print ("Again Last 5 records - ", df.tail(5))
-        
+                
 
-        # forecast_out = int(math.ceil(0.01*len(df)))
-        forecast_out = 1  # Predict only Next One day
-        #Eprint(len(df))
-        #print(forecast_out)
- 
-        
-        X_Validation_Before_PreProcessing = np.array(df['next_day_close'])
-        X_Validation_Before_PreProcessing = X_Validation_Before_PreProcessing[-forecast_out:]
-        
-        X = np.array(df.drop(['next_day_close','open','low','high'],1))
+        X = np.array(df.drop(['next_day_close','open','low','high', 'diff','output'],1))
         #X = np.array(df.drop(['close', 'symbol', 'date'],1))
         print ("DF Columns - ",df.columns)
        
         X = preprocessing.scale(X)
-        #X = preprocessing.normalize(X)
+#        X = preprocessing.normalize(X)
         
-        #print X[-5:]
+        print ("After preprocessing- ", X[-5:])
 
-        X_Validation = X[-forecast_out:]
-#        print ("\nX_Validation - \n", X_Validation[-5:])
 
-        X = X[:-forecast_out]
-        #print X[-5:]
+        y = np.array(df['output'])
 
-        y = np.array(df['next_day_close'])
-        y = y[:-forecast_out]
         print ("Y values - ", y[-5:])
 
         print("Dataset lenghts - ",(len(X), len(y)))
@@ -106,25 +95,37 @@ class NYSE_Kaggele_Ex:
 
         #X_train, X_test, y_train, y_test = cross_validation.train_test_split(X, y, test_size=0.3)
         X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.3, random_state=42)
-        #result_df = pd.DataFrame()
-#        result_df.columns = [['Actual Close', 'Linear Reg', 'SVM', 'Decision Tree']]
-        self.result_df.loc[0, 'Actual Close'] = X_Validation_Before_PreProcessing[0]
-
-#        df.loc[df.shape[0]] = ['d', 3] 
         
         
-        self.callLinearRegression(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
-#        self.callLogisticRegression(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
-        self.callSVM(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
-        self.callDecisionTreeRegressor(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
-        self.callRandomForest(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
-        self.callGradientBoosting(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
-        self.callXGBClassifier(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
-        self.callKNN(X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing )
+#        self.callLinearRegression(X_train, X_test, y_train, y_test)
+#        self.callLogisticRegression(X_train, X_test, y_train, y_test)
+#        self.callSVM(X_train, X_test, y_train, y_test)
+        self.callDecisionTreeRegressor(X_train, X_test, y_train, y_test )
+        self.callRandomForest(X_train, X_test, y_train, y_test )
+        self.callGradientBoosting(X_train, X_test, y_train, y_test )
+        self.callXGBClassifier(X_train, X_test, y_train, y_test )
+#        self.callKNN(X_train, X_test, y_train, y_test )
     
         print (self.result_df)
+ 
+    def callRandomForest(self, X_train, X_test, y_train, y_test):
+        clf = RandomForestClassifier(n_estimators=100, random_state=0)
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+
+        cm = confusion_matrix(y_test, y_pred)
         
-    def callLinearRegression(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
+        print (cm)
+
+        plt.imshow(cm, cmap='binary', interpolation='None')
+        plt.show()
+        
+        print (y_test- y_pred)
+        plt.plot(y_test, y_pred)
+#        x_max = len(y_test)
+#        plt.axis([0,x_max,0,1])
+        
+    def callLinearRegression(self, X_train, X_test, y_train, y_test):
         # Linear regression
         clf = LinearRegression(n_jobs=-1)
         clf.fit(X_train, y_train)
@@ -140,7 +141,7 @@ class NYSE_Kaggele_Ex:
         print ("Varinace - ", variance)
 
         
-    def callLogisticRegression(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
+    def callLogisticRegression(self, X_train, X_test, y_train, y_test):
         # Linear regression
         clf = LogisticRegression(penalty='l2',C=.01)
         clf.fit(X_train, y_train)
@@ -151,7 +152,7 @@ class NYSE_Kaggele_Ex:
 #        print ("LogisticRegression forecast Values - ", forecast_set)
         self.result_df.loc[0, 'Logistic Reg'] = forecast_set  
         
-    def callSVM(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
+    def callSVM(self, X_train, X_test, y_train, y_test):
         # SVM        
         clf = svm.SVR(kernel='poly')
         clf.fit(X_train, y_train)
@@ -162,30 +163,40 @@ class NYSE_Kaggele_Ex:
 #        print ("SVM forecast Values - ", forecast_set)
         self.result_df.loc[0, 'SVM'] = forecast_set  
         
-    def callDecisionTreeRegressor(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
+    def callDecisionTreeRegressor(self, X_train, X_test, y_train, y_test ):
         #Decision Tree
-        clf = tree.DecisionTreeRegressor()
+        clf = tree.DecisionTreeClassifier()
         clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-#        print ("\n\n****** Decision Tree Accuracy  - ",accuracy)
-        forecast_set = clf.predict(X_Validation)
-#        print ("X_Validation_Before_PreProcessing - ", X_Validation_Before_PreProcessing)
-#        print ("Decision Tree forecast Values - ", forecast_set)
-        self.result_df.loc[0, 'DecisionTree'] = forecast_set  
+        y_pred = clf.predict(X_test)
+
+        cm = confusion_matrix(y_test, y_pred)
         
-    def callGradientBoosting(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
+        print (cm)
+
+        plt.imshow(cm, cmap='binary', interpolation='None')
+        plt.show()
+        
+        print (y_test- y_pred)
+        plt.plot(y_test, y_pred)
+        
+    def callGradientBoosting(self, X_train, X_test, y_train, y_test):
         #GradientBoostingClassifier
-        clf= GradientBoostingRegressor(n_estimators=100, learning_rate=1.0, max_depth=1, random_state=0)
+        clf= GradientBoostingClassifier(n_estimators=100, learning_rate=1.0, max_depth=1, random_state=0)
         clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-#        print ("\n\n****** GradientBoostingRegressor Accuracy  - ",accuracy)
-        forecast_set = clf.predict(X_Validation)
-#        print ("X_Validation_Before_PreProcessing - ", X_Validation_Before_PreProcessing)
-#        print ("GradientBoostingRegressor forecast Values - ", forecast_set)
-        self.result_df.loc[0, 'GradientBoosting'] = forecast_set 
+        y_pred = clf.predict(X_test)
+
+        cm = confusion_matrix(y_test, y_pred)
+        
+        print (cm)
+
+        plt.imshow(cm, cmap='binary', interpolation='None')
+        plt.show()
+        
+        print (y_test- y_pred)
+        plt.plot(y_test, y_pred)
         
 
-    def callKNN(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
+    def callKNN(self, X_train, X_test, y_train, y_test):
          #KNN
         clf = KNeighborsRegressor()
         clf.fit(X_train, y_train)
@@ -198,27 +209,22 @@ class NYSE_Kaggele_Ex:
         
         # self.plot_graph(forecast_set, df)
         
-    def callXGBClassifier(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
+    def callXGBClassifier(self, X_train, X_test, y_train, y_test):
         #XGBClassifier
-        clf = XGBRegressor()
+        clf = XGBClassifier()
         clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-#        print ("\n\n****** XGBClassifier Accuracy  - ",accuracy)     
-        forecast_set = clf.predict(X_Validation)
-#        print ("\nX_Validation_Before_PreProcessing - ", X_Validation_Before_PreProcessing)
-#        print (" XGBRegressor forecast Values - ", forecast_set)
-        self.result_df.loc[0, 'XGBRegressor'] = forecast_set 
+        y_pred = clf.predict(X_test)
+
+        cm = confusion_matrix(y_test, y_pred)
         
-    def callRandomForest(self, X_train, X_test, y_train, y_test,X_Validation, X_Validation_Before_PreProcessing ):
-        #Random forest
-        clf = RandomForestRegressor(n_estimators=20)
-        clf.fit(X_train, y_train)
-#        accuracy = clf.score(X_test, y_test)
-#        print ("\n\n****** RandomForestClassifier Accuracy  - ",accuracy)
-        forecast_set = clf.predict(X_Validation)
-#        print ("X_Validation_Before_PreProcessing - ", X_Validation_Before_PreProcessing)
-#        print ("RandomForestClassifier forecast Values - ", forecast_set)
-        self.result_df.loc[0, 'RandomForest'] = forecast_set 
+        print (cm)
+
+        plt.imshow(cm, cmap='binary', interpolation='None')
+        plt.show()
+        
+        print (y_test- y_pred)
+        plt.plot(y_test, y_pred)
+        
 
 
     def plot_graph(self,forecast_set, df):
@@ -248,8 +254,9 @@ class NYSE_Kaggele_Ex:
 
 
 if __name__ == "__main__":
-    c = NYSE_Kaggele_Ex()
+    c = Nifty_Classifier_Ex()
 
     c.execute()
 
-    print ("Done !!")
+    print ("Done !!")# -*- coding: utf-8 -*-
+

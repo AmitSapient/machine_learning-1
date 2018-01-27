@@ -3,6 +3,7 @@ import quandl
 import pandas as pd
 import nsepy as nse
 from datetime import date, timedelta
+import numpy as np
 
 class StockPredictionHelper:
     
@@ -19,24 +20,24 @@ class StockPredictionHelper:
             
             nse_dataset = "NSE" + "/" + ticker
     #        mydata = quandl.get(nse_dataset, authtoken=Authkey, rows=1000, sort_order="asc")
-            mydata = quandl.get(nse_dataset, authtoken=Authkey, start_date='2017-01-01', sort_order="asc")
+            mydata = quandl.get(nse_dataset, authtoken=Authkey, start_date='2014-01-01', sort_order="asc")
             
             
             # print mydata
             df = pd.DataFrame(mydata)
-            print (ticker, " first record - \n", df[:1])
+#            print (ticker, " first record - \n", df[:1])
             filename = 'datasets\\'+ticker+'.csv'
             
             df.to_csv(filename)
     #        df.columns = ['open', 'high','low','close','volume','turnover']
             df.columns = ['date','open', 'high','low','close','volume','turnover']
-            print ('Got data from Quandl')
+            print ('Got data from Quandl - ', ticker)
             
         else:
             df = pd.read_csv("D:\\workspace_pyCharm\\Machine Learning\\datasets\\NIFTY_50.csv")
             df.columns = ['date','open', 'high','low','close','volume','turnover']
             df = df.drop(['date'],1)
-            print ('Got data from CSV')
+            print ('Got data from CSV - ', ticker)
         
     #    print(df.columns)
         #'Open', 'High', 'Low', 'Close', 'Shares Traded', 'Turnover (Rs. Cr)'
@@ -119,13 +120,87 @@ class StockPredictionHelper:
         
         #Now calculate 9 ema signal line
         df['macd_9ema_signal'] = df['MACD'].ewm(span=9).mean()
-        df['macd_signal_diff'] = df['macd_9ema_signal']  - df['MACD']
-#        df = df.drop(['26ema', '12ema'],1 )
-        df = df.drop(['26ema', '12ema', 'MACD','macd_9ema_signal'],1 )
-        
+#        df['macd_signal_diff'] = df['macd_9ema_signal']  - df['MACD']
+        df = df.drop(['26ema', '12ema'],1 )
+#        df = df.drop(['26ema', '12ema', 'MACD','macd_9ema_signal'],1 )
         
 #        df.plot(y = ["MACD"], title = "MACD")
         return df  
+
+    def addMACDAsFeature(self, df):
+        
+        mydf = self.MACD(df)
+        mydf = self.calculateRSI(mydf)
+        mydf['macd_0'] = mydf['MACD']
+        mydf['macd_1'] = mydf['MACD'].shift(1)
+        mydf['macd_2'] = mydf['MACD'].shift(2)
+        mydf['macd_sig_0'] = mydf['macd_9ema_signal']       
+        mydf['macd_sig_1'] = mydf['macd_9ema_signal'].shift(1)
+ 
+        mydf['rsi0'] = mydf['rsi']
+        mydf['rsi1'] = mydf['rsi'].shift(1)
+        mydf['rsi2'] = mydf['rsi'].shift(2)
+        
+#        print ('mydf - ', mydf)
+        mydf['diff_0'] = mydf['macd_0']  - mydf['macd_sig_0']
+        mydf['diff_1'] = mydf['macd_1']  - mydf['macd_sig_1']
+        
+        pos_threshold = 0.3
+        neg_threshold = -0.3
+        '''
+        mydf['macd_result'] = np.where((mydf['macd_0'] < 0) & (mydf['diff_0'] < 0 ) & ( mydf['diff_1'] < mydf['diff_0']) & (mydf['diff_0'] > neg_threshold)  , 'MACD-PBuy', 'MACD-PHold')
+        mydf['macd_result'] = np.where((mydf['macd_result'] == "MACD-PHold") & (mydf['macd_0'] > 0) & (mydf['diff_0'] > 0 ) & ( mydf['diff_1'] > mydf['diff_0']) & (mydf['diff_0'] < pos_threshold)  , 'MACD-PSell', mydf['macd_result'])    
+        mydf['macd_result'] = np.where((mydf['macd_0'] > mydf['macd_sig_0'] ) & (mydf['macd_1'] <= mydf['macd_sig_1'] ), 'MACD-Buy', mydf['macd_result'])    
+        mydf['macd_result'] = np.where((mydf['macd_0'] < mydf['macd_sig_0'] ) & (mydf['macd_1'] >= mydf['macd_sig_1'] ), 'MACD-Sell', mydf['macd_result'])    
+        
+        mydf['rsi_result'] = np.where((mydf['rsi0'] < 70) & (mydf['rsi0'] > 50 ) & (mydf['rsi0'] < mydf['rsi1']) & (mydf['rsi1'] < mydf['rsi2']) & (mydf['rsi2'] > 70 )  , 'RSI-Sell', 'RSI-Hold')
+        mydf['rsi_result'] = np.where((mydf['rsi0'] > 70) & (mydf['rsi0'] < mydf['rsi1']) & (mydf['rsi1'] < mydf['rsi2'])  , 'RSI-PSell', mydf['rsi_result'])
+        mydf['rsi_result'] = np.where((mydf['rsi0'] > 30) & (mydf['rsi0'] < 50 ) & (mydf['rsi1'] < mydf['rsi0']) & (mydf['rsi2'] < mydf['rsi1']) & (mydf['rsi2'] < 30 )  , 'RSI-Buy', mydf['rsi_result'])
+        mydf['rsi_result'] = np.where((mydf['rsi0'] < 30) & (mydf['rsi0'] > 20 ) & (mydf['rsi1'] < mydf['rsi0'])  , 'RSI-PBuy', mydf['rsi_result'])
+        '''
+        '''
+        #sell=-2, Psell=-1, hold=0, pbuy=1, buy=2
+        mydf['macd_result'] = np.where((mydf['macd_0'] < 0) & (mydf['diff_0'] < 0 ) & ( mydf['diff_1'] < mydf['diff_0']) & (mydf['diff_0'] > neg_threshold)  ,1, 0)
+        mydf['macd_result'] = np.where((mydf['macd_result'] == 0) & (mydf['macd_0'] > 0) & (mydf['diff_0'] > 0 ) & ( mydf['diff_1'] > mydf['diff_0']) & (mydf['diff_0'] < pos_threshold)  , -1, mydf['macd_result'])    
+        mydf['macd_result'] = np.where((mydf['macd_0'] > mydf['macd_sig_0'] ) & (mydf['macd_1'] <= mydf['macd_sig_1'] ), 2, mydf['macd_result'])    
+        mydf['macd_result'] = np.where((mydf['macd_0'] < mydf['macd_sig_0'] ) & (mydf['macd_1'] >= mydf['macd_sig_1'] ), -2, mydf['macd_result'])    
+        
+        mydf['rsi_result'] = np.where((mydf['rsi0'] < 70) & (mydf['rsi0'] > 50 ) & (mydf['rsi0'] < mydf['rsi1']) & (mydf['rsi1'] < mydf['rsi2']) & (mydf['rsi2'] > 70 )  , -2, 0)
+        mydf['rsi_result'] = np.where((mydf['rsi0'] > 70) & (mydf['rsi0'] < mydf['rsi1']) & (mydf['rsi1'] < mydf['rsi2'])  , -1, mydf['rsi_result'])
+        mydf['rsi_result'] = np.where((mydf['rsi0'] > 30) & (mydf['rsi0'] < 50 ) & (mydf['rsi1'] < mydf['rsi0']) & (mydf['rsi2'] < mydf['rsi1']) & (mydf['rsi2'] < 30 )  , 2, mydf['rsi_result'])
+        mydf['rsi_result'] = np.where((mydf['rsi0'] < 30) & (mydf['rsi0'] > 20 ) & (mydf['rsi1'] < mydf['rsi0'])  , 1, mydf['rsi_result'])
+        '''
+
+        #sell=-2, Psell=-1, hold=0, pbuy=1, buy=2
+        mydf['macd_result'] = np.where((mydf['macd_0'] < mydf['macd_1'])  ,-1, 0) #sell
+        mydf['macd_result'] = np.where((mydf['macd_0'] > mydf['macd_1']) ,1, mydf['macd_result']) #buy
+        
+        mydf['rsi_result'] = np.where((mydf['rsi0'] < mydf['rsi1'])   , -1, 0)
+        mydf['rsi_result'] = np.where((mydf['rsi0'] > mydf['rsi1'])   , 1, mydf['rsi_result'])
+
+
+#        print(mydf.columns)
+        mydf = mydf.drop(['diff_0', 'diff_1', 'rsi0','rsi1','rsi2','macd_0','macd_1','macd_2','macd_sig_0','macd_sig_1','MACD', 'macd_9ema_signal', 'rsi'],1)
+#        print (mydf)
+#        print(mydf.columns)
+        return mydf
+        
+        
+    def calculateRSI(self, df):
+        n=14
+        delta = df['close'].diff()
+        dUp, dDown = delta.copy(), delta.copy()
+        dUp[dUp < 0] = 0
+        dDown[dDown > 0] = 0
+        
+        RolUp = pd.rolling_mean(dUp, n)
+        RolDown = pd.rolling_mean(dDown, n).abs()
+        
+        RS = RolUp / RolDown
+        RSI = 100.0 - (100.0 / (1.0 + RS))
+#        print("RSI - ", RSI)
+        df['rsi'] = RSI
+        return df
     
     def predictNextDayPrice(self):
         
@@ -146,5 +221,13 @@ class StockPredictionHelper:
         #concate does an outerjoin.. this is case where some records in Nist proces missing
         # for few dates
         df = pd.concat([df, temp], axis=1)
-#        df['nifty_close'] = temp['close']
+#        #some nifty values are coming as NaN
+#        df = df.fillna( df['nifty_close'].rolling(window=1).mean()) 
         return df
+    
+    def addLast60DaysClose(self, df, days):
+        for i in range(1, days):
+            close_diff = 'close_diff_{}'.format(i)
+            df[close_diff] = df['close'].shift(i)
+            
+        return df    

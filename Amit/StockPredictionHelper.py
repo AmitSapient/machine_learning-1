@@ -4,6 +4,7 @@ import pandas as pd
 import nsepy as nse
 from datetime import date, timedelta
 import numpy as np
+import glob
 
 class StockPredictionHelper:
     
@@ -20,7 +21,7 @@ class StockPredictionHelper:
             
             nse_dataset = "NSE" + "/" + ticker
     #        mydata = quandl.get(nse_dataset, authtoken=Authkey, rows=1000, sort_order="asc")
-            mydata = quandl.get(nse_dataset, authtoken=Authkey, start_date='2014-01-01', sort_order="asc")
+            mydata = quandl.get(nse_dataset, authtoken=Authkey, start_date='2017-01-01', sort_order="asc")
             
             
             # print mydata
@@ -30,7 +31,7 @@ class StockPredictionHelper:
             
             df.to_csv(filename)
     #        df.columns = ['open', 'high','low','close','volume','turnover']
-            df.columns = ['date','open', 'high','low','close','volume','turnover']
+            df.columns = ['open', 'high','low','last','close','volume','turnover']
             print ('Got data from Quandl - ', ticker)
             
         else:
@@ -39,13 +40,8 @@ class StockPredictionHelper:
             df = df.drop(['date'],1)
             print ('Got data from CSV - ', ticker)
         
-    #    print(df.columns)
-        #'Open', 'High', 'Low', 'Close', 'Shares Traded', 'Turnover (Rs. Cr)'
-        
-        #dd = df.to_dict(orient='dict')
-        #ddd = dd['Close'] 
-        
-    #    print (df)
+
+        df = df.drop(['open','low','high','last', 'turnover'],1)
         return df
     
     
@@ -101,11 +97,11 @@ class StockPredictionHelper:
         df['5dma'] = df['close'].rolling(window=5).mean()
         df['10dma'] = df['close'].rolling(window=10).mean()
         df['15dma'] = df['close'].rolling(window=15).mean()
-        df['20dma'] = df['close'].rolling(window=20).mean()
-        df['50dma'] = df['close'].rolling(window=50).mean()
+#        df['20dma'] = df['close'].rolling(window=20).mean()
+#        df['50dma'] = df['close'].rolling(window=50).mean()
         #following two seems to be important as MSE drop using them
-        df['100dma'] = df['close'].rolling(window=100).mean()
-        df['200dma'] = df['close'].rolling(window=200).mean()
+#        df['100dma'] = df['close'].rolling(window=100).mean()
+#        df['200dma'] = df['close'].rolling(window=200).mean()
 
         return df    
 
@@ -181,7 +177,9 @@ class StockPredictionHelper:
 
 #        print(mydf.columns)
         mydf = mydf.drop(['diff_0', 'diff_1', 'rsi0','rsi1','rsi2','macd_0','macd_1','macd_2','macd_sig_0','macd_sig_1','MACD', 'macd_9ema_signal', 'rsi'],1)
-#        print (mydf)
+        print (mydf)
+        filename = 'datasets\\mydf.csv'
+#        mydf.to_csv(filename)
 #        print(mydf.columns)
         return mydf
         
@@ -206,17 +204,24 @@ class StockPredictionHelper:
         
         df = self.getData('NIFTY_50')
         
-    def addChangeFromPreviousDay(self, df):
+    def addChangeFromPreviousDay(self, df, feature, days):
         
-        df['prev_day_close'] = df['close'].shift(1)
-        df['change'] = df['close'] - df['prev_day_close']
-        df = df.drop(['prev_day_close'],1 )
+        feature_prev_day = feature+'_prev_{}'
+        feature_change = feature+'_change_{}'
+        for i in range(1, days+1):
+            new_feature = feature_prev_day.format(i)
+            df[new_feature] = df[feature].shift(i)
+            new_change_feature = feature_change.format(i)
+            df[new_change_feature] = df[feature] - df[new_feature]
+#            df = df.drop([new_feature],1 )
+            
         return df
     
     def addNiftyCloseAsFeature(self, df, flag):
         temp = self.getNiftyData("NIFTY_50", flag)
         #Drop all column but 'close'
         temp = temp[['close']]
+#        temp = temp[['close', 'Date']]
         temp=temp.rename(columns = {'close':'nifty_close'})
         #concate does an outerjoin.. this is case where some records in Nist proces missing
         # for few dates
@@ -225,9 +230,66 @@ class StockPredictionHelper:
 #        df = df.fillna( df['nifty_close'].rolling(window=1).mean()) 
         return df
     
-    def addLast60DaysClose(self, df, days):
-        for i in range(1, days):
-            close_diff = 'close_diff_{}'.format(i)
-            df[close_diff] = df['close'].shift(i)
+    def addOpenInterestData(self,df, ticker):
+        oiDf = pd.read_csv('merged_csv.csv')
+        oiDf = oiDf.loc[oiDf[' NSE Symbol'] == ticker]
+        oiDf = oiDf[['Date',' NSE Open Interest']]
+        oiDf.columns = ['date', 'open_interest']
+        
+        oiDf['date'] = pd.to_datetime(oiDf['date'])
+        oiDf.set_index('date', inplace=True)
+        oiDf.sort_index(axis=0, inplace=True, ascending=True)
+        oiDf['prev_day_oi'] = oiDf['open_interest'].shift(1)
+        oiDf['oi_change'] = oiDf['open_interest'] - oiDf['prev_day_oi']
+        
+#        df= df.merge(oiDf)
+        df = df.join(oiDf)
+#        df= df.merge(oiDf,  left_index=True, right_on='date')
+        df = df.drop(['prev_day_oi' ],1 )
+#        df = df.drop(['date_x','date_y','prev_day_oi' ],1 )
+        print(df)
+        return df
+        
+    def addOptionsANDFoData(self,df, ticker):
+        print('processing OI data.......')
+        interesting_files = glob.glob("./nse_downloads/*.csv") 
+        fullDf = pd.DataFrame()
+        for filename in interesting_files:
+            oiDf = pd.read_csv(filename)
+            oiDf = oiDf.loc[oiDf['SYMBOL'] == ticker]
+            call_data = oiDf.loc[oiDf['OPTION_TYP'] == 'CE']
+            put_data = oiDf.loc[oiDf['OPTION_TYP'] == 'PE']
+            call_data_grouped = call_data.groupby(['TIMESTAMP']).agg({'CONTRACTS': sum, 'OPEN_INT': sum}).reset_index()
+            call_data_grouped.columns = ['date','call_contracts', 'call_open_int']
+            put_data_grouped = put_data.groupby(['TIMESTAMP']).agg({'CONTRACTS': sum, 'OPEN_INT': sum}).reset_index()
+            put_data_grouped.columns = ['date','put_contracts', 'put_open_int']
+            
+#            frames = [call_data_grouped, put_data_grouped ]
+#            combdf = pd.concat(frames)
+            combdf = pd.merge(call_data_grouped, put_data_grouped, on='date')
+            frames = [fullDf, combdf]
+            fullDf= pd.concat(frames)
+            print(fullDf.shape)
+            
+#        print(fullDf.head())
+#        print(fullDf.tail())
+        #sort of date so that shift from previous day can be calculated
+        
+        fullDf['date'] = pd.to_datetime(fullDf['date'])
+        fullDf.set_index('date', inplace=True)
+        fullDf.sort_index(axis=0, inplace=True, ascending=True)
+        print(fullDf.head())
+        print(fullDf.tail())
+        df = df.join(fullDf)
+        print('......DONE processing OI data.......')
+        return df
+        
+        
+    def addPrevDaysAsFeature(self, df,feature, days):
+        feature_diff = feature+'_prev_{}'
+        for i in range(1, days+1):
+            new_feature = feature_diff.format(i)
+            df[new_feature] = df[feature].shift(i)
             
         return df    
+    

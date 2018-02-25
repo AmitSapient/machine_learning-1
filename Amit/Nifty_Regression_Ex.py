@@ -1,24 +1,22 @@
 import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
-import math, datetime, time
 
-from sklearn import preprocessing, cross_validation, svm, model_selection
-from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn import tree
-from sklearn.neighbors import KNeighborsClassifier,KNeighborsRegressor
-from xgboost import XGBClassifier,XGBRegressor
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+import time
+
+
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import mean_squared_error
-import matplotlib.pyplot as plt
-from matplotlib import style
+from sklearn import preprocessing, cross_validation, svm, model_selection
+
 import StockPredictionHelper
+import StockAlgosHelper
 from sklearn.neural_network import MLPRegressor
 
 class Nifty_Regression_Ex:
 
     def __init__(self):
         self.helper = StockPredictionHelper.StockPredictionHelper()
+        self.algohelper = StockAlgosHelper.StockAlgosHelper()
         
     def addOIAndFOMoreFeatures(self,df):
         
@@ -55,45 +53,52 @@ class Nifty_Regression_Ex:
         return df        
         
         
-    def backTesting(self, ticker, flag):
+    def backTesting(self, ticker, real_time_flag, isOI, isOtheData):
         print("\n\n\n\n\n***********  New Run of Nifty_Regression_Ex **********************\n\n")
         pd.set_option('display.expand_frame_repr', False)
 #        np.set_printoptions(formatter={'float_kind':'{:f}'.format})
         np.set_printoptions(suppress=True)
-        
-        df = self.helper.getData(ticker, flag)
-#        df = self.helper.getDataFromNSE(ticker, flag)
-        
-        df = df.fillna(df.mean())
-        # Add another column next_day_close exct duplicate of close. Later we shift to make prev close.
-        # First shift 'close' by -1 because today's close depends on all the feature values of yesterday. To predict today's close
-        # we need the open, high, lo, volumne of yesterday because we dont have these values yet for today ! 
-        df['next_day_close'] = df['close'].shift(-1)
-        
-        #add change & change % from previous day
-        df = self.helper.addChangeFromPreviousDay(df,'close',1)
-        
-        #old fn for total OI (options+FO together)
-#        df = self.helper.addOpenInterestData(df, ticker)
-        #New OI function
-#        df = self.helper.addOptionsANDFoData(df, ticker)
-#        df = self.addOIAndFOMoreFeatures(df)
-        
-        df = self.addAllFeaturesOtherThanOI(df, flag)
-        
-        df = df.dropna(axis=0, how='any')
+        filename = 'datasets\\'+ticker+'_Final.csv'
+        if real_time_flag == 1:
+            df = self.helper.getData(ticker, real_time_flag)
+    #        df = self.helper.getDataFromNSE(ticker, flag)
+            
+            df = df.fillna(df.mean())
+            # Add another column next_day_close exct duplicate of close. Later we shift to make prev close.
+            # First shift 'close' by -1 because today's close depends on all the feature values of yesterday. To predict today's close
+            # we need the open, high, lo, volumne of yesterday because we dont have these values yet for today ! 
+            df['next_day_close'] = df['close'].shift(-1)
+            
+            #add change & change % from previous day
+            df = self.helper.addChangeFromPreviousDay(df,'close',1)
+            #Use OI data or not
+            if isOI ==1:           
+                #old fn for total OI (options+FO together)
+        #        df = self.helper.addOpenInterestData(df, ticker)
+                #New OI function
+                df = self.helper.addOptionsANDFoData(df, ticker)
+                #this adds a NAN values to inital records...
+                df = self.addOIAndFOMoreFeatures(df)
+            
+            if isOtheData ==1: 
+                df = self.addAllFeaturesOtherThanOI(df, real_time_flag)
+            
+            df = df.dropna(axis=0, how='any')
+            
+            df.to_csv(filename)
+            print('\n\n Final df columns - \n', df.columns)
+        else:    
+            try:
+                df = pd.read_csv(filename)
+                df.set_index('Date', inplace=True)
+            except Exception as e:
+                print('Backtesting File based fun, error is  - ', e)
+                print("Now trying real_time...")
+                self.backTesting(ticker, 1,  isOI, isOtheData)
+                
+            
         Xdf_Tomorrow = df.tail(1)  
-         
-        
-#        print('df after all NA drop - \n', df)
-        print('\n\n Final df columns - \n', df.columns)
-        
         Xdf_Tomorrow = Xdf_Tomorrow.drop(['next_day_close'],1)
-        filename = 'datasets\\'+ticker+'_OI.csv'
-        df.to_csv(filename)
-
-#        print ("DF Columns - ",df.columns)
-       
         X_Tomorrow = np.array(Xdf_Tomorrow)
         X = np.array(df.drop(['next_day_close'],1))
         X = preprocessing.scale(X)
@@ -122,243 +127,99 @@ class Nifty_Regression_Ex:
 #        df.loc[df.shape[0]] = ['d', 3] 
         
 #        self.callRandomForest(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
-#        self.callDecisionTreeRegressor(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
-#        self.callGradientBoosting(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
+#        self.algohelper.callDecisionTreeRegressor(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
+#        self.algohelper.callGradientBoosting(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
 #        
-#        self.callLinearRegression(X_train, X_test, y_train, y_test,X_Validation, y_Validation, X_Tomorrow )
-##        self.callLogisticRegression(X_train, X_test, y_train, y_test,X_Validation , y_Validation , X_Tomorrow)
-#        self.callSVM(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
-#        self.callXGBClassifier(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
-#        self.callKNN(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
+#        self.algohelper.callLinearRegression(X_train, X_test, y_train, y_test,X_Validation, y_Validation, X_Tomorrow )
+##        self.algohelper.callLogisticRegression(X_train, X_test, y_train, y_test,X_Validation , y_Validation , X_Tomorrow)
+#        self.algohelper.callSVM(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
+#        self.algohelper.callXGBClassifier(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
+#        self.algohelper.callKNN(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
 #    
         #Neural Network
-        self.callNeuralNetwork(X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
-
-    def callNeuralNetwork(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow ):
+        df = self.callNeuralNetwork(ticker,X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow)
+        return df
+    
+    def callNeuralNetwork(self, ticker,X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow ):
         #Random forest
 #        clf = MLPRegressor(alpha=0.001, solver='lbfgs', hidden_layer_sizes = (100,), max_iter = 100000, 
 #                 activation = 'logistic', learning_rate = 'adaptive')
-        clf = MLPRegressor(alpha=0.001, hidden_layer_sizes = (10,), max_iter = 100000, 
-                 activation = 'logistic', verbose = 'True', learning_rate = 'adaptive')
-
-        clf.fit(X_train, y_train)
+        result = pd.DataFrame()
         
-        y_predicted = clf.predict(X_Validation)
-        accuracy = clf.score(X_test, y_test)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-        print("\n NeuralNetwork diffArray  - \n", diffArray)
-        print ("\n****** NeuralNetwork Accuracy  - ",accuracy)
+        #For testing        
+#        activationL = ['logistic'] #activationL = ['logistic','tanh','relu']
+#        solverL = ['lbfgs'] #solverL = ['lbfgs', 'sgd', 'adam']
+#        learning_rateL=['adaptive'] #learning_rateL=['constant', 'invscaling', 'adaptive'] 
+#        hidden_layer_sizesL=[10] #hidden_layer_sizesL=[10,50,100]
 
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)
+        activationL = ['logistic','tanh','relu']
+        solverL = ['lbfgs', 'sgd', 'adam']
+        learning_rateL=['constant', 'invscaling', 'adaptive'] 
+        hidden_layer_sizesL=[10,50,100]
         
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow close - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
+        for activationV in activationL:
+            for solverV in solverL:
+                for learning_rateV in learning_rateL:
+                    for hidden_layer_sizesV in hidden_layer_sizesL:
+                    
+                        try:
+                            clf = MLPRegressor(alpha=.001, solver=solverV, hidden_layer_sizes = (hidden_layer_sizesV,), max_iter = 500000, 
+                                     activation = activationV, verbose = False, learning_rate = learning_rateV)
+                    
+                    
+                            clf.fit(X_train, y_train)
+                            
+                            y_predicted = clf.predict(X_Validation)
+                            accuracy = clf.score(X_Validation, y_Validation)
+                            diff = y_Validation - y_predicted
+                            diffArray = np.column_stack((y_Validation , y_predicted, diff))
+#                            print("\n NeuralNetwork diffArray  - \n", diffArray)
+#                            print ("\n****** NeuralNetwork Accuracy  - ",accuracy)
+                    
+                            mse = mean_squared_error(y_Validation, y_predicted)
+#                           print ("Mean Squred Error", mse)
+#                            variance = np.var(y_predicted)         
+#                           print ("Varinace - ", variance)
+                            
+                            y_Tomorrow = clf.predict(X_Tomorrow)
+#                            print ("X_Tomorrow close - ", X_Tomorrow[0][0])
+#                            print ("y_Tomorrow - ", y_Tomorrow)
+                            diff = y_Tomorrow - X_Tomorrow[0][0]
+                            result = result.append({'ticker':ticker,'hidden_layer_sizes':hidden_layer_sizesV, 'activation':activationV, 'solver':solverV, 'learning_rate':learning_rateV, 'accuracy':accuracy,'Y_actual':X_Tomorrow[0][0], 'Y_predicted':y_Tomorrow[0], 'Diff':diff[0], 'mse':mse}, ignore_index=True)
+            
+                            print('Result data Frame - \n', result)
+                        except Exception as e:
+                            print('Error in MLPRegressor for ticker   - ', ticker)
+                            print('error is - ',e)
+                            continue
+
+        return result
         
-    def callRandomForest(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow ):
-        #Random forest
-        clf = RandomForestRegressor(min_samples_leaf=1, max_features=0.5, n_estimators=20, random_state=42, oob_score=True)
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        y_predicted = clf.predict(X_Validation)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** RandomForestClassifier Accuracy  - ",accuracy)
-
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)
-        
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow close - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-
-    def callDecisionTreeRegressor(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow):
-        #Decision Tree
-        clf = tree.DecisionTreeRegressor()
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        
-        y_predicted = clf.predict(X_Validation)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** Decision Tree Accuracy  - ",accuracy)  
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)
-        
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-
-        
-    def callGradientBoosting(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow):
-        #GradientBoostingClassifier
-        clf= GradientBoostingRegressor(n_estimators=100, learning_rate=1.0, max_depth=1, random_state=0)
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        y_predicted = clf.predict(X_Validation)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** callGradientBoosting Accuracy  - ",accuracy)
-
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)        
-
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-
-    def callLinearRegression(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow):
-        # Linear regression
-        clf = LinearRegression(n_jobs=-1)
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        
-        y_predicted = clf.predict(X_Validation)
-#        accuracy = clf.score(X_Validation, y_Validation )
-#        print ("\n\n****** LinearRegression Accuracy  - ",accuracy)
-        
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** LinearRegression Accuracy  - ",accuracy)
-
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)
-
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow close - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-        
-
-    def callKNN(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow):
-         #KNN
-        clf = KNeighborsRegressor()
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        y_predicted = clf.predict(X_Validation)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** KNeighborsRegressor Accuracy  - ",accuracy)
-
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)        
-        
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow close - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-        
-    def callXGBClassifier(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow):
-        #XGBClassifier
-        clf = XGBRegressor()
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        y_predicted = clf.predict(X_Validation)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** XGBRegressor Accuracy  - ",accuracy)
-
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)        
-        
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow close - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-
-    def callLogisticRegression(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation , X_Tomorrow):
-        # Linear regression
-        clf = LogisticRegression(penalty='l2',C=.01)
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        y_predicted = clf.predict(X_Validation)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** LogisticRegression Accuracy  - ",accuracy)
-
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)        
-
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow close - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-        
-    def callSVM(self, X_train, X_test, y_train, y_test,X_Validation , y_Validation, X_Tomorrow ):
-        # SVM        
-        clf = svm.SVR(kernel='poly')
-        clf.fit(X_train, y_train)
-        accuracy = clf.score(X_test, y_test)
-        y_predicted = clf.predict(X_Validation)
-        diff = y_Validation - y_predicted
-        diffArray = np.column_stack((y_Validation , y_predicted, diff))
-#        print("\n diffArray  - \n", diffArray)
-        print ("\n****** SVM Accuracy  - ",accuracy)
-
-        mse = mean_squared_error(y_Validation, y_predicted)
-        print ("Mean Squred Error", mse)
-        variance = np.var(y_predicted)         
-        print ("Varinace - ", variance)        
-
-        y_Tomorrow = clf.predict(X_Tomorrow)
-        print ("X_Tomorrow close - ", X_Tomorrow[0][0])
-        print ("y_Tomorrow - ", y_Tomorrow)
-        
-
-    def plot_graph(self,forecast_set, df):
-        df['Forecast'] = np.nan
-        last_date = df.iloc[-1].date
-        last_date = datetime.datetime.strptime(last_date, "%m/%d/%Y")
-        # last_unix = last_date.timestamp()
-        last_unix = time.mktime(last_date.timetuple())
-        #last_unix = last_date
-        one_day = 86400
-        next_unix = last_unix + one_day
-
-        for i in forecast_set:
-            next_date = datetime.datetime.fromtimestamp(next_unix)
-            next_unix += one_day
-            df.loc[next_date] = [np.nan for _ in range(len(df.columns) - 1)] + [i]
-        print (df.head(n=10))
-        print (df.tail(n=10))
-        df['close'].plot()
-        df['Forecast'].plot()
-        plt.legend(loc=4)
-        plt.xlabel('Date')
-        plt.ylabel('Price')
-        plt.show()
-
-
-
-
 if __name__ == "__main__":
+    start_time = time.time()
     thisObj = Nifty_Regression_Ex()
-    #MARUTI, AUROPHARMA, 8KMILES, FEDERALBNK, NCC, GMRINFRA, HDFCBANK
-    ticker = 'HDFCBANK'
-    thisObj.backTesting(ticker, 'real_time')
-#    thisObj.backTesting(ticker, 'csv')
+    #MARUTI, AUROPHARMA, 8KMILES, FEDERALBNK, NCC, GMRINFRA, HDFCBANK,ICICIBANK
+    # INFY,ITC,ONGC, 
+#    tickerL = ['ICICIBANK','MARUTI','AUROPHARMA', 'FEDERALBNK','HDFCBANK' ]
+    tickerL = ['ICICIBANK','MARUTI']
+    
+    real_time_flag = 1
+    results = pd.DataFrame()
+    for ticker in  tickerL:
+        result = thisObj.backTesting(ticker, real_time_flag, 1, 1)  # include OI data or not
+        results = results.append(result)
+        results = results[['ticker','Y_actual', 'Y_predicted','Diff','mse','accuracy','hidden_layer_sizes','activation', 'solver', 'learning_rate']]                        
+        filename = 'datasets\\'+ticker+'_Regression_Results.csv'
+        results.to_csv(filename)
+        
+    results = results[['ticker','Y_actual', 'Y_predicted','Diff','mse','accuracy','hidden_layer_sizes','activation', 'solver', 'learning_rate']]                        
+    filename = 'datasets\\Combined_Regression_Results.csv'
+    results.to_csv(filename)
+        
+#    thisObj.backTesting(ticker, 'csv', 1, 1)  # include OI data or not
     
 #    thisObj.predictNextDayPrice()
 
     print ("Done !!")
+    print("--- %s seconds ---" % (time.time() - start_time))
+    print("--- %s Minutes ---" % (time.time() - start_time)/60)

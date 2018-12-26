@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-ticker = 'HDFCBANK'
+ticker = 'MARUTI'
 # Importing the training set
 dataset_train = pd.read_csv(ticker+'_Train.csv')
 training_set = dataset_train.iloc[:, 1:2].values
@@ -36,10 +36,11 @@ X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
 
 # Importing the Keras libraries and packages
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Activation
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras import optimizers
+
 
 # Initialising the RNN
 regressor = Sequential()
@@ -48,20 +49,21 @@ regressor = Sequential()
 regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (X_train.shape[1], 1)))
 regressor.add(Dropout(0.2))
 
-# Adding a second LSTM layer and some Dropout regularisation
-regressor.add(LSTM(units = 50, return_sequences = True))
-regressor.add(Dropout(0.2))
+## Adding a second LSTM layer and some Dropout regularisation
+#regressor.add(LSTM(units = 50, return_sequences = True))
+#regressor.add(Dropout(0.2))
 
-# Adding a third LSTM layer and some Dropout regularisation
-regressor.add(LSTM(units = 50, return_sequences = True))
-regressor.add(Dropout(0.2))
-
+## Adding a third LSTM layer and some Dropout regularisation
+#regressor.add(LSTM(units = 50, return_sequences = True))
+#regressor.add(Dropout(0.2))
+#
 # Adding a fourth LSTM layer and some Dropout regularisation
 regressor.add(LSTM(units = 50))
 regressor.add(Dropout(0.2))
 
 # Adding the output layer
 regressor.add(Dense(units = 1))
+#regressor.add(Activation('softmax'))
 
 # Compiling the RNN
 regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
@@ -69,7 +71,7 @@ regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
 #regressor.compile(optimizer = 'sgd', loss = 'mean_squared_error')
 
 # Fitting the RNN to the Training set
-regressor.fit(X_train, y_train, epochs = 85, batch_size = 32)
+regressor.fit(X_train, y_train, epochs = 2, batch_size = 32)
 
 
 
@@ -81,7 +83,9 @@ real_stock_price = dataset_test.iloc[:, 1:2].values
 
 # Getting the predicted stock price of 2017
 dataset_total = pd.concat((dataset_train['Open'], dataset_test['Open']), axis = 0)
-inputs = dataset_total[len(dataset_total) - len(dataset_test) - 60:].values
+indx = len(dataset_total) - len(dataset_test) - 60
+print(indx)
+inputs = dataset_total[indx:].values
 inputs = inputs.reshape(-1,1)
 inputs = sc.transform(inputs)
 X_test = []

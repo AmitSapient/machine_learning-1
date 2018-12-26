@@ -1,3 +1,4 @@
+#Just a min...
 # Recurrent Neural Network
 
 
